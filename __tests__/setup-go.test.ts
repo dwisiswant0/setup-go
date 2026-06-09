@@ -141,6 +141,7 @@ describe('setup-go', () => {
     //jest.resetAllMocks();
     jest.clearAllMocks();
     //jest.restoreAllMocks();
+    process.exitCode = undefined;
   });
 
   afterAll(async () => {
@@ -854,6 +855,12 @@ describe('setup-go', () => {
   });
 
   describe('go-version-file', () => {
+    beforeEach(() => {
+      os.platform = 'linux';
+      os.arch = 'x64';
+      findSpy.mockImplementation(() => '');
+    });
+
     const goModContents = `module example.com/mymodule
 
 go 1.14
@@ -875,6 +882,28 @@ use .
 `;
 
     const toolVersionsContents = `golang 1.23
+`;
+
+    const goToolModContents = `module example.com/tools
+
+go 1.26.1
+
+tool (
+\tgithub.com/dvyukov/go-fuzz/go-fuzz
+\tgithub.com/dvyukov/go-fuzz/go-fuzz-build
+\tgolang.org/x/vuln/cmd/govulncheck
+)
+`;
+
+    const goToolModWithDefaultToolchainContents = `module example.com/tools
+
+go 1.26.1
+
+toolchain default
+
+tool (
+\tgolang.org/x/vuln/cmd/govulncheck
+)
 `;
 
     it('reads version from go.mod', async () => {
@@ -901,6 +930,32 @@ use .
       expect(logSpy).toHaveBeenCalledWith('matching 1.19...');
     });
 
+    it('reads version from an alternate Go modfile', async () => {
+      inputs['go-version-file'] = 'go.tool.mod';
+      existsSpy.mockImplementation(() => true);
+      readFileSpy.mockImplementation(() => Buffer.from(goToolModContents));
+
+      await main.run();
+
+      expect(logSpy).toHaveBeenCalledWith('Setup go version spec 1.26.1');
+      expect(logSpy).toHaveBeenCalledWith('Attempting to download 1.26.1...');
+      expect(logSpy).toHaveBeenCalledWith('matching 1.26.1...');
+    });
+
+    it('falls back to go directive for alternate modfile toolchain default', async () => {
+      inputs['go-version-file'] = 'go.tool.mod';
+      existsSpy.mockImplementation(() => true);
+      readFileSpy.mockImplementation(() =>
+        Buffer.from(goToolModWithDefaultToolchainContents)
+      );
+
+      await main.run();
+
+      expect(logSpy).toHaveBeenCalledWith('Setup go version spec 1.26.1');
+      expect(logSpy).toHaveBeenCalledWith('Attempting to download 1.26.1...');
+      expect(logSpy).toHaveBeenCalledWith('matching 1.26.1...');
+    });
+
     it('reads version from .tool-versions', async () => {
       inputs['go-version-file'] = '.tool-versions';
       existsSpy.mockImplementation(() => true);
@@ -915,6 +970,18 @@ use .
 
     it('reads version from .go-version', async () => {
       inputs['go-version-file'] = '.go-version';
+      existsSpy.mockImplementation(() => true);
+      readFileSpy.mockImplementation(() => Buffer.from(`1.13.0${osm.EOL}`));
+
+      await main.run();
+
+      expect(logSpy).toHaveBeenCalledWith('Setup go version spec 1.13.0');
+      expect(logSpy).toHaveBeenCalledWith('Attempting to download 1.13.0...');
+      expect(logSpy).toHaveBeenCalledWith('matching 1.13.0...');
+    });
+
+    it('keeps raw version fallback for .mod files without Go directives', async () => {
+      inputs['go-version-file'] = 'version.mod';
       existsSpy.mockImplementation(() => true);
       readFileSpy.mockImplementation(() => Buffer.from(`1.13.0${osm.EOL}`));
 
@@ -1013,6 +1080,12 @@ use .
   });
 
   describe('go-version-file-toolchain', () => {
+    beforeEach(() => {
+      os.platform = 'linux';
+      os.arch = 'x64';
+      findSpy.mockImplementation(() => '');
+    });
+
     const goVersions = ['1.22.0', '1.21rc2', '1.18'];
     const placeholderVersion = '1.19';
     const buildGoMod = (
@@ -1037,7 +1110,7 @@ exclude example.com/thismodule v1.3.0
     const buildGoWork = (
       goVersion: string,
       toolchainVersion: string
-    ) => `go 1.19
+    ) => `go ${goVersion}
 
 toolchain go${toolchainVersion}
 
@@ -1055,6 +1128,12 @@ use .
         },
         {
           goVersionfile: 'go.work',
+          fileContents: Buffer.from(buildGoWork(placeholderVersion, version)),
+          expected_version: version,
+          desc: 'from toolchain directive'
+        },
+        {
+          goVersionfile: 'go.tool.mod',
           fileContents: Buffer.from(buildGoMod(placeholderVersion, version)),
           expected_version: version,
           desc: 'from toolchain directive'
@@ -1068,7 +1147,7 @@ use .
         },
         {
           goVersionfile: 'go.work',
-          fileContents: Buffer.from(buildGoMod(placeholderVersion, version)),
+          fileContents: Buffer.from(buildGoWork(placeholderVersion, version)),
           gotoolchain_env: 'local',
           expected_version: placeholderVersion,
           desc: 'from go directive when GOTOOLCHAIN is local'
