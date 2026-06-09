@@ -52334,27 +52334,37 @@ function makeSemver(version) {
     return fullVersion;
 }
 function parseGoVersionFile(versionFilePath) {
+    var _a;
     const contents = fs_1.default.readFileSync(versionFilePath).toString();
-    if (path.basename(versionFilePath) === 'go.mod' ||
-        path.basename(versionFilePath) === 'go.work') {
-        // for backwards compatibility: use version from go directive if
-        // 'GOTOOLCHAIN' has been explicitly set
-        if (process.env[exports.GOTOOLCHAIN_ENV_VAR] !== exports.GOTOOLCHAIN_LOCAL_VAL) {
-            // toolchain directive: https://go.dev/ref/mod#go-mod-file-toolchain
-            const matchToolchain = contents.match(/^toolchain go(1\.\d+(?:\.\d+|rc\d+)?)/m);
-            if (matchToolchain) {
-                return matchToolchain[1];
-            }
-        }
-        // go directive: https://go.dev/ref/mod#go-mod-file-go
-        const matchGo = contents.match(/^go (\d+(\.\d+)*)/m);
-        return matchGo ? matchGo[1] : '';
+    const filename = path.basename(versionFilePath);
+    if (filename === 'go.mod' || filename === 'go.work') {
+        return (_a = parseGoModVersion(contents)) !== null && _a !== void 0 ? _a : '';
     }
-    else if (path.basename(versionFilePath) === '.tool-versions') {
+    else if (filename.endsWith('.mod')) {
+        const version = parseGoModVersion(contents);
+        if (version) {
+            return version;
+        }
+    }
+    else if (filename === '.tool-versions') {
         const match = contents.match(/^golang\s+([^\n#]+)/m);
         return match ? match[1].trim() : '';
     }
     return contents.trim();
+}
+function parseGoModVersion(contents) {
+    // for backwards compatibility: use version from go directive if
+    // 'GOTOOLCHAIN' has been explicitly set
+    if (process.env[exports.GOTOOLCHAIN_ENV_VAR] !== exports.GOTOOLCHAIN_LOCAL_VAL) {
+        // toolchain directive: https://go.dev/ref/mod#go-mod-file-toolchain
+        const matchToolchain = contents.match(/^toolchain\s+go(1\.\d+(?:\.\d+|(?:beta|rc)\d+)?)(?=\s|$|-)/m);
+        if (matchToolchain) {
+            return matchToolchain[1];
+        }
+    }
+    // go directive: https://go.dev/ref/mod#go-mod-file-go
+    const matchGo = contents.match(/^go\s+(\d+(?:\.\d+)*(?:(?:beta|rc)\d+)?)(?=\s|$)/m);
+    return matchGo ? matchGo[1] : undefined;
 }
 function resolveStableVersionDist(versionSpec, arch) {
     return __awaiter(this, void 0, void 0, function* () {

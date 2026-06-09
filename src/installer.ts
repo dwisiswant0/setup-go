@@ -652,32 +652,41 @@ export function makeSemver(version: string): string {
 
 export function parseGoVersionFile(versionFilePath: string): string {
   const contents = fs.readFileSync(versionFilePath).toString();
+  const filename = path.basename(versionFilePath);
 
-  if (
-    path.basename(versionFilePath) === 'go.mod' ||
-    path.basename(versionFilePath) === 'go.work'
-  ) {
-    // for backwards compatibility: use version from go directive if
-    // 'GOTOOLCHAIN' has been explicitly set
-    if (process.env[GOTOOLCHAIN_ENV_VAR] !== GOTOOLCHAIN_LOCAL_VAL) {
-      // toolchain directive: https://go.dev/ref/mod#go-mod-file-toolchain
-      const matchToolchain = contents.match(
-        /^toolchain go(1\.\d+(?:\.\d+|rc\d+)?)/m
-      );
-      if (matchToolchain) {
-        return matchToolchain[1];
-      }
+  if (filename === 'go.mod' || filename === 'go.work') {
+    return parseGoModVersion(contents) ?? '';
+  } else if (filename.endsWith('.mod')) {
+    const version = parseGoModVersion(contents);
+    if (version) {
+      return version;
     }
-
-    // go directive: https://go.dev/ref/mod#go-mod-file-go
-    const matchGo = contents.match(/^go (\d+(\.\d+)*)/m);
-    return matchGo ? matchGo[1] : '';
-  } else if (path.basename(versionFilePath) === '.tool-versions') {
+  } else if (filename === '.tool-versions') {
     const match = contents.match(/^golang\s+([^\n#]+)/m);
     return match ? match[1].trim() : '';
   }
 
   return contents.trim();
+}
+
+function parseGoModVersion(contents: string): string | undefined {
+  // for backwards compatibility: use version from go directive if
+  // 'GOTOOLCHAIN' has been explicitly set
+  if (process.env[GOTOOLCHAIN_ENV_VAR] !== GOTOOLCHAIN_LOCAL_VAL) {
+    // toolchain directive: https://go.dev/ref/mod#go-mod-file-toolchain
+    const matchToolchain = contents.match(
+      /^toolchain\s+go(1\.\d+(?:\.\d+|(?:beta|rc)\d+)?)(?=\s|$|-)/m
+    );
+    if (matchToolchain) {
+      return matchToolchain[1];
+    }
+  }
+
+  // go directive: https://go.dev/ref/mod#go-mod-file-go
+  const matchGo = contents.match(
+    /^go\s+(\d+(?:\.\d+)*(?:(?:beta|rc)\d+)?)(?=\s|$)/m
+  );
+  return matchGo ? matchGo[1] : undefined;
 }
 
 async function resolveStableVersionDist(

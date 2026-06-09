@@ -34,7 +34,7 @@ See [action.yml](action.yml).
     # Version or version range of Go to use
     go-version: '1.23'
     
-    # Path to go.mod, go.work, .go-version, or .tool-versions file
+    # Path to go.mod, go.work, alternate .mod, .go-version, or .tool-versions file
     # Note: if both go-version and go-version-file are provided, go-version takes precedence.
     go-version-file: 'go.mod'
     
